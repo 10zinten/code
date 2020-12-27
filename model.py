@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from datetime import date
-from typing import NewType, Optional, Set
+from typing import List, NewType, Optional, Set
 
 Quantity = NewType("Quantity", int)
-Sku = New("Sku", str) # product ref
-Reference = New("Reference", str) # order ref
+Sku = NewType("Sku", str) # product ref
+Reference = NewType("Reference", str) # order ref
 
 @dataclass(frozen=True)
 class OrderLine:
@@ -41,6 +41,17 @@ class Batch:
         """
         return hash(self.reference)
 
+    def __gt__(self, other):
+        """To use `sorted` on batches with `self.eta`.
+
+        Magic methods can express domain semantics
+        """
+        if self.eta is None:
+            return False
+        if other.eta is None:
+            return True
+        return self.eta > other.eta
+
     def allocate(self, line: OrderLine):
         if self.can_allocate(line):
             self._allocations.add(line)
@@ -59,3 +70,17 @@ class Batch:
 
     def can_allocate(self, line: OrderLine) -> bool:
         return self.sku == line.sku and self.available_quantity >= line.qty
+
+class OutOfStock(Exception):
+    pass
+
+
+def allocate(line: OrderLine, batches: List[Batch]) -> str:
+    try:
+        batch = next(
+            b for b in sorted(batches) if b.can_allocate(line)
+        )
+    except StopIteration:
+        raise OutOfStock(f"Out of stock for sku {line.sku}")
+    batch.allocate(line)
+    return batch.reference
